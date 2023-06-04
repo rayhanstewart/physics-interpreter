@@ -1,10 +1,9 @@
 # Physics Interpreter 1.1
 # Much better in every way, though simple for now and not very customizable (yet)
 
-import sys
 import math as m
-import re
 from dataclasses import dataclass
+import re
 
 
 # Starting with creating data classes to generate units
@@ -27,6 +26,7 @@ class Unit:
                 return x
         return self.__repr__()
 
+
 # TODO Research radians to meters conversion, and how to handle radians in general
 units = {  # All the units that can be used
     "none": Unit("m", 0, 0, 0),
@@ -39,9 +39,9 @@ units = {  # All the units that can be used
     "kg*m": Unit("m", 1, 0, 1),
     "kg/m": Unit("m", -1, 0, 1),
     "kg*m/s": Unit("m", 1, -1, 1),
-    "Newton": Unit("m", 1, -2, 1),
-    "Joule": Unit("m", 2, -2, 1),
-    "Watt": Unit("m", 2, -3, 1),
+    "N": Unit("m", 1, -2, 1),
+    "J": Unit("m", 2, -2, 1),
+    "W": Unit("m", 2, -3, 1),
     "rad/s": Unit("rad", 1, -1, 0),
     "rad/s^2": Unit("rad", 1, -2, 0),
     "kg*m^2": Unit("m", 2, 0, 1),
@@ -78,39 +78,49 @@ class Physics_Num:
     def __add__(self, other):
         if self.unit == other.unit:
             return Physics_Num(self.value + other.value, self.unit)
+        elif other.unit == units["none"]:
+            return Physics_Num(self.value + other.value, self.unit)
+        elif self.unit == units["none"]:
+            return Physics_Num(self.value + other.value, other.unit)
         else:
             raise Exception("Units do not match")
 
     def __sub__(self, other):
         if self.unit == other.unit:
             return Physics_Num(self.value - other.value, self.unit)
+        elif other.unit == units["none"]:
+            return Physics_Num(self.value - other.value, self.unit)
+        elif self.unit == units["none"]:
+            return Physics_Num(self.value - other.value, other.unit)
         else:
             raise Exception("Units do not match")
 
     def __mul__(self, other):
         if self.unit.core == other.unit.core:
             return Physics_Num(self.value * other.value, Unit(self.unit.core, self.unit.dist + other.unit.dist,
-                                                             self.unit.sec + other.unit.sec,
-                                                             self.unit.kg + other.unit.kg))
+                                                              self.unit.sec + other.unit.sec,
+                                                              self.unit.kg + other.unit.kg))
         else:
-            pass # TODO Handle this
+            pass  # TODO Handle this
 
     def __truediv__(self, other):
         if self.unit.core == other.unit.core:
             return Physics_Num(self.value / other.value, Unit(self.unit.core, self.unit.dist - other.unit.dist,
-                                                             self.unit.sec - other.unit.sec,
-                                                             self.unit.kg - other.unit.kg))
+                                                              self.unit.sec - other.unit.sec,
+                                                              self.unit.kg - other.unit.kg))
         else:
             pass
 
     def __pow__(self, other):
         if self.unit.core == other.unit.core:
             return Physics_Num(self.value ** other.value, Unit(self.unit.core, self.unit.dist * other.value,
-                                                             self.unit.sec * other.value,
-                                                             self.unit.kg * other.value))
+                                                               self.unit.sec * other.value,
+                                                               self.unit.kg * other.value))
         else:
             pass
 
+    def __round__(self):
+        return Physics_Num(round(self.value, summon("Precision")), self.unit)
 
 
 class Physics_Var(Physics_Num):
@@ -123,6 +133,7 @@ class Physics_Var(Physics_Num):
             self.unit = unit
         else:
             super().__init__(value, unit)
+        store(self)
 
     def __repr__(self):
         if self.placeholder:
@@ -145,10 +156,12 @@ def globe(precision=3):
     for x in all:
         all[x][0] = round(all[x][0], precision)
         all[x] = Physics_Num(all[x][0], all[x][1])
-
+    all["Precision"] = precision
     def summon(x):
         if x in all:
             return all[x]
+        elif x is "all":
+            return all.keys()
         else:
             raise Exception(f"Unknown constant {x}")
 
@@ -157,9 +170,9 @@ def globe(precision=3):
 
 summon = globe()
 
+norm = lambda x: Physics_Num(x, units["none"])
 
 class equation():
-    # TODO Decide on list or dictionary for components, want to be able to set an expected unit for solving
     def __init__(self, components: dict):
         self.components = components
 
@@ -175,10 +188,7 @@ class equation():
             elif x in kwargs:
                 self.components[x] = kwargs[x]
             else:
-                try:
-                    self.components[x] = summon(x)
-                except:
-                    pass
+                pass # TODO Add support for summon
         return self.components
         # Balance both sides and highlight the unknown variable or judge equality
         # Integrate calc function here
@@ -215,38 +225,61 @@ def set_space(name):
         workspaces[name] = init_workspace(name)
     return workspaces[name][0], workspaces[name][1], workspaces[name][2]
 
+
 def calc(equation: list):
     # Add error handling later
     # evaluate equation based on order of operations
-    # First split at every arithmetic operator
-    if "=" in equation: # Add unknown variable support later
-        ind = equation.index("=")
-        lhs = equation[:ind]
-        rhs = equation[ind+1:]
-        lhs = calc(lhs)
-        rhs = calc(rhs)
-        if lhs == rhs:
-            return True
+    # TODO Add in variable support later
+    if "=" in equation:
+        phold = None
+        for x in equation:
+            if x is type(Physics_Var):
+                if x.placeholder:
+                    phold = x
+                    break
+        if phold is None:
+            ind = equation.index("=")
+            lhs = equation[:ind]
+            rhs = equation[ind + 1:]
+            lhs = calc(lhs)
+            rhs = calc(rhs)
+            if lhs == rhs:
+                return True
+            else:
+                return False
         else:
-            return False
+            pass # This will be hard
     equation = equation
     oops = ["(", "sqrt", "sin", "cos", "tan", "^", "*", "/", "+", "-"]
     for x in oops:
         if (x == "(") & ("(" in equation):
+            tnum = equation.count("(")
             start = equation.index("(")
-            end = equation.index(")") # doesn't work for layered parenthesis
+            for y in range(start, len(equation)):
+                if equation[y] == ")":
+                    tnum -= 1
+                if tnum == 0:
+                    end = y
+                    break
+            equation.pop(start)
+            equation.pop(end - 1)
+            temp = calc(equation[start:end - 1])
+            equation[start] = temp
+            for y in range(start + 1, end - 1):
+                equation.pop(start + 1)
         if x in equation:
             ind = equation.index(x)
             if x in ["sqrt", "sin", "cos", "tan"]:
-                temp = arithmetic[x](equation[ind+1])
+                temp = arithmetic[x](equation[ind + 1])
                 equation.pop(ind)
                 equation[ind] = temp
             else:
-                temp = arithmetic[x](equation[ind-1],equation[ind+1])
+                temp = arithmetic[x](equation[ind - 1], equation[ind + 1])
                 equation.pop(ind)
-                equation.pop(ind-1)
-                equation[ind-1] = temp
-    return equation[0]
+                equation.pop(ind - 1)
+                equation[ind - 1] = temp
+    return round(equation[0]) # Note, the equation only rounds at the end
+
 
 store, get_var, all_vars = set_space("default")
 
@@ -258,4 +291,47 @@ print(summon('pi'))
 print(summon('g').get_unit())
 print(equation(
     {'F': get_var('x'), '=': None, 'm': get_var('y'), 'a': summon('g')}).solve())
-print(calc([1, "+", 2, "*", 3, "^", 2]))
+
+print(calc([norm(1), "+", "(", summon("pi"), "*", norm(3), ")", "^", norm(2)]))
+
+
+# Driver code
+if __name__ == "__main__":
+    nums = re.compile(r"\d+\.?\d*")
+    def get_input():
+        return input(">>> ")
+    def parse_input(inp):
+        try:
+            temp = inp.split(" ")
+            if (temp == [""]) or (temp == []):
+                return [0]
+            for x in temp:
+                y = temp.index(x)
+                if temp[y] in all_vars():
+                    temp[y] = get_var(temp[y])
+                elif temp[y] in summon("all"):
+                    temp[y] = summon(temp[y])
+                elif temp[y].isdigit() or temp[y].isdecimal():
+                    if y+1 < len(temp):
+                        if temp[y+1] in units:
+                            temp[y] = Physics_Num(float(temp[y]), units[temp[y+1]])
+                            temp.pop(y+1)
+                        else:
+                            temp[y] = norm(float(temp[y]))
+                    else:
+                        temp[y] = norm(float(temp[y]))
+
+            return temp
+        except:
+            print("Invalid input")
+            return [0]
+
+    cont = True
+    while cont:
+        inp = get_input()
+        if inp == "quit":
+            cont = False
+        else:
+            parsed = parse_input(inp)
+            print(parsed)
+            print(calc(parsed)) # TODO Bug in equality operation, 10 = 10 returns false
